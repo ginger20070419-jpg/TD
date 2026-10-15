@@ -1,6 +1,8 @@
 #pragma once
 
 #include "player.h"
+#include "wind.h"
+#include <vector>
 
 // =====================================================
 //シーン管理
@@ -45,6 +47,9 @@ private:
 	void UpdateScroll();
 	// 背景の描画(BG1を繰り返し、ゴール付近でBG2を流し込む)
 	void DrawBackground();
+	// 突風の更新・描画(ステージ座標への変換と、押す判定の呼び出しをここで行う)
+	void UpdateWind();
+	void DrawWind();
 
 	// シーン切り替え
 	void ChangeScene(SceneType next);
@@ -71,10 +76,22 @@ private:
 	// ---- プレイヤー(player.h / player.cpp) ----
 	Player player_;
 
+	// ---- 突風(wind.h / wind.cpp) ----
+	// ステージのデータ(Stage クラス)ができたら、そちらへ移す
+	std::vector<WindZone> winds_;
+	// 前のフレームのプレイヤーの高さ(ステージ座標)。速さの計算に使う
+	float prevPlayerWorldY_ = 0.0f;
+	// 【仮】押された向きの表示用(プレイヤーにレーンができたら不要)
+	int windDebugDir_ = 0;
+	int windDebugTimer_ = 0;
+
 	// ---- 画像ハンドル(-1 は未読み込み) ----
 	int titleBgHandle_ = -1;  // タイトル背景(素材ができたら読み込む)
 	int playBg1Handle_ = -1;  // BG1
 	int playBg2Handle_ = -1;  // BG2(ゴール付近用)
 	int clearHandle_ = -1;    // gameclear.png
 	int gameOverHandle_ = -1; // gameover.png
+	// 突風の画像(3480×240)。名前は「吹いていく向き」で付けている
+	int windToRightHandle_ = -1; // 左から右へ吹く風(windLeft.png)
+	int windToLeftHandle_ = -1;  // 右から左へ吹く風(windRight.png)
 };

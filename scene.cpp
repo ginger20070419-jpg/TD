@@ -8,7 +8,7 @@
 namespace {
 // 画面サイズ
 const int kScreenWidth = 1280;
-const int kScreenHeight = 720;
+const int kScreenHeight = 1080;
 
 // 背景画像の高さ(BG1・BG2とも1080px。)
 const float kBgHeight = 1080.0f;
@@ -18,6 +18,10 @@ const float kScrollLineY = 360.0f;
 
 // スクロールが終わったあと、この高さまで登ったらゴール(画面のY座標)
 const float kGoalY = 250.0f;
+
+// 【仮】デバッグ用。突風のテスト用エリアを置き、範囲と状態を表示する。
+// ステージのデータができたら false にする(または消す)
+const bool kDebugWind = true;
 } // namespace
 
 // -----------------------------------------------------
@@ -32,6 +36,11 @@ void SceneManager::Initialize() {
 	playBg2Handle_ = Novice::LoadTexture("./Resources/images/BG2.png");
 	clearHandle_ = Novice::LoadTexture("./Resources/images/gameclear.png");
 	gameOverHandle_ = Novice::LoadTexture("./Resources/images/gameover.png");
+	// ファイル名は「風が来る側」、変数名は「吹いていく向き」。
+	//   windLeft.png  = 左から来て右へ吹く風
+	//   windRight.png = 右から来て左へ吹く風
+	windToRightHandle_ = Novice::LoadTexture("./Resources/images/windLeft.png");
+	windToLeftHandle_ = Novice::LoadTexture("./Resources/images/windRight.png");
 
 	currentScene_ = SceneType::kTitle;
 	playState_ = PlayState::kPlaying;
@@ -95,6 +104,7 @@ void SceneManager::UpdatePlay(const char* keys, const char* preKeys) {
 		// ゲームの更新は「プレイ中」のときだけ動かす
 		player_.Update(keys); // プレイヤーの移動
 		UpdateScroll();       // スクロール
+		UpdateWind();         // 突風(スクロール後のプレイヤー位置で判定する)
 
 		// ゴール判定(スクロールが終わったあと、一定の高さまで登ったらクリア)
 		if (scrollY_ >= stageScrollLength_ && player_.GetY() <= kGoalY) {
@@ -146,6 +156,9 @@ void SceneManager::DrawPlay() {
 
 	// プレイヤー
 	player_.Draw();
+
+	// 突風(プレイヤーより手前に描く)
+	DrawWind();
 
 	// ここにロープ・ギミックの描画を書いていく
 
@@ -216,6 +229,51 @@ void SceneManager::DrawBackground() {
 }
 
 // -----------------------------------------------------
+// 突風
+// -----------------------------------------------------
+void SceneManager::UpdateWind() {
+	// プレイヤーの位置を、スクロールに影響されない「ステージ座標」にする
+	float playerTop = player_.GetY() - scrollY_;
+	float playerBottom = playerTop + player_.GetSize();
+
+	// 【仮】速さ = 1フレームで登った距離(上に登ると正)。
+	// プレイヤーの本実装で GetSpeed() ができたら、その値に置き換える
+	float speed = prevPlayerWorldY_ - playerTop;
+	prevPlayerWorldY_ = playerTop;
+
+	for (WindZone& wind : winds_) {
+		wind.Update();
+
+		int dir = wind.CheckPush(playerTop, playerBottom, speed);
+		if (dir != 0) {
+			// ここでプレイヤーを隣のロープへ移動させる。
+			// プレイヤーにレーンができたら、例: player_.SetLane(player_.GetLane() + dir);
+			windDebugDir_ = dir;
+			windDebugTimer_ = 90;
+		}
+	}
+
+	if (windDebugTimer_ > 0) {
+		windDebugTimer_--;
+	}
+}
+
+void SceneManager::DrawWind() {
+	for (const WindZone& wind : winds_) {
+		// 風の向きに合った画像を渡す
+		int handle = (wind.GetParams().direction > 0) ? windToRightHandle_ : windToLeftHandle_;
+		wind.Draw(scrollY_, handle);
+		if (kDebugWind) {
+			wind.DrawDebug(scrollY_);
+		}
+	}
+
+	if (kDebugWind && windDebugTimer_ > 0) {
+		Novice::ScreenPrintf(20, 80, "WIND PUSH -> %s", windDebugDir_ > 0 ? "RIGHT" : "LEFT");
+	}
+}
+
+// -----------------------------------------------------
 // シーン切り替え・補助関数
 // -----------------------------------------------------
 void SceneManager::ChangeScene(SceneType next) {
@@ -234,6 +292,30 @@ void SceneManager::ResetPlay() {
 	// スクロールとプレイヤーを初期位置に戻す
 	scrollY_ = 0.0f;
 	player_.Reset();
+
+	// 突風を初期状態に戻す
+	prevPlayerWorldY_ = player_.GetY() - scrollY_;
+	windDebugDir_ = 0;
+	windDebugTimer_ = 0;
+	winds_.clear();
+	if (kDebugWind) {
+		// 【仮】テスト用の突風を置く(ステージ4のデータができたらそちらへ移す)
+		WindZone::Params p;
+		p.worldY = -600.0f; // 上端(ステージ座標)。画面の高さ800からだと、約1400px登った先
+		p.height = 240.0f;
+		p.direction = 1; // 右へ
+		winds_.emplace_back();
+		winds_.back().Setup(p);
+
+		// 左へ吹く風もテストできるように、もう1つ置く(タイミングをずらしてある)
+		WindZone::Params q;
+		q.worldY = -1100.0f;
+		q.height = 240.0f;
+		q.direction = -1; // 左へ
+		q.startOffsetFrames = 60;
+		winds_.emplace_back();
+		winds_.back().Setup(q);
+	}
 
 	// ステージごとの高さを変えたくなったらここで currentStage_ に応じて設定する
 	// 例: stageScrollLength_ = 3000.0f + currentStage_ * 500.0f;
