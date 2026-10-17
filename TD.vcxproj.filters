@@ -29,6 +29,9 @@
     <ClCompile Include="wind.cpp">
       <Filter>KamataEngine</Filter>
     </ClCompile>
+    <ClCompile Include="rock.cpp">
+      <Filter>KamataEngine</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="C:\KamataEngine\DirectXGame\audio\Audio.h">
@@ -115,5 +118,6 @@
     <ClInclude Include="scene.h" />
     <ClInclude Include="Player.h" />
     <ClInclude Include="wind.h" />
+    <ClInclude Include="rock.h" />
   </ItemGroup>
 </Project>

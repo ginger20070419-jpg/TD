@@ -2,6 +2,7 @@
 
 #include "player.h"
 #include "wind.h"
+#include "rock.h"
 #include <vector>
 
 // =====================================================
@@ -35,6 +36,9 @@ public:
 	// 描画(毎フレーム呼ぶ)
 	void Draw();
 
+	// タイトルで exit が選ばれたら true(main のループを抜けるのに使う)
+	bool ShouldExit() const { return exitRequested_; }
+
 private:
 	// ---- シーンごとの更新・描画 ----
 	void UpdateTitle(const char* keys, const char* preKeys);
@@ -50,6 +54,9 @@ private:
 	// 突風の更新・描画(ステージ座標への変換と、押す判定の呼び出しをここで行う)
 	void UpdateWind();
 	void DrawWind();
+	// 落石の更新・描画(当たったらプレイヤーを硬直させる)
+	void UpdateRock();
+	void DrawRock();
 
 	// シーン切り替え
 	void ChangeScene(SceneType next);
@@ -63,6 +70,9 @@ private:
 private:
 	SceneType currentScene_ = SceneType::kTitle;
 	PlayState playState_ = PlayState::kPlaying;
+
+	// タイトルで exit が選ばれたか
+	bool exitRequested_ = false;
 
 	// 現在のステージ番号(1〜kMaxStage)
 	int currentStage_ = 1;
@@ -79,11 +89,13 @@ private:
 	// ---- 突風(wind.h / wind.cpp) ----
 	// ステージのデータ(Stage クラス)ができたら、そちらへ移す
 	std::vector<WindZone> winds_;
-	// 前のフレームのプレイヤーの高さ(ステージ座標)。速さの計算に使う
-	float prevPlayerWorldY_ = 0.0f;
 	// 【仮】押された向きの表示用(プレイヤーにレーンができたら不要)
 	int windDebugDir_ = 0;
 	int windDebugTimer_ = 0;
+
+	// ---- 落石(rock.h / rock.cpp) ----
+	// ステージのデータ(Stage クラス)ができたら、そちらへ移す
+	std::vector<RockFall> rocks_;
 
 	// ---- 画像ハンドル(-1 は未読み込み) ----
 	int titleBgHandle_ = -1;  // タイトル背景(素材ができたら読み込む)
@@ -91,6 +103,7 @@ private:
 	int playBg2Handle_ = -1;  // BG2(ゴール付近用)
 	int clearHandle_ = -1;    // gameclear.png
 	int gameOverHandle_ = -1; // gameover.png
+	int rockHandle_ = -1;     // rock.png(64×64)
 	// 突風の画像(3480×240)。名前は「吹いていく向き」で付けている
 	int windToRightHandle_ = -1; // 左から右へ吹く風(windLeft.png)
 	int windToLeftHandle_ = -1;  // 右から左へ吹く風(windRight.png)

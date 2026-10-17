@@ -22,15 +22,17 @@ const float kGoalY = 250.0f;
 // 【仮】デバッグ用。突風のテスト用エリアを置き、範囲と状態を表示する。
 // ステージのデータができたら false にする(または消す)
 const bool kDebugWind = true;
+
+// 【仮】デバッグ用。落石のテスト用の岩を置き、当たり判定の円を表示する。
+// ステージのデータができたら false にする(または消す)
+const bool kDebugRock = true;
 } // namespace
 
 // -----------------------------------------------------
 // 初期化
 // -----------------------------------------------------
 void SceneManager::Initialize() {
-	// タイトル画像はまだないので読み込まない(-1のまま)
-	// 素材ができたら下の行のコメントを外してファイル名を合わせる
-	// titleBgHandle_ = Novice::LoadTexture("./Resources/images/title.png");
+	titleBgHandle_ = Novice::LoadTexture("./Resources/images/title.png");
 
 	playBg1Handle_ = Novice::LoadTexture("./Resources/images/BG1.png");
 	playBg2Handle_ = Novice::LoadTexture("./Resources/images/BG2.png");
@@ -42,9 +44,16 @@ void SceneManager::Initialize() {
 	windToRightHandle_ = Novice::LoadTexture("./Resources/images/windLeft.png");
 	windToLeftHandle_ = Novice::LoadTexture("./Resources/images/windRight.png");
 
+	// 落石の画像
+	rockHandle_ = Novice::LoadTexture("./Resources/images/rock.png");
+
+	// プレイヤーの画像
+	player_.Initialize();
+
 	currentScene_ = SceneType::kTitle;
 	playState_ = PlayState::kPlaying;
 	currentStage_ = 1;
+	exitRequested_ = false;
 }
 
 // -----------------------------------------------------
@@ -76,10 +85,15 @@ void SceneManager::Draw() {
 // タイトル
 // -----------------------------------------------------
 void SceneManager::UpdateTitle(const char* keys, const char* preKeys) {
-	// スペースでゲーム開始(ステージ1から)
-	if (IsTrigger(keys, preKeys, DIK_SPACE)) {
+	// Pキーでゲーム開始(ステージ1から)
+	if (IsTrigger(keys, preKeys, DIK_P)) {
 		currentStage_ = 1;
 		ChangeScene(SceneType::kPlay);
+	}
+
+	// Eキーで終了(main のループが ShouldExit を見て抜ける)
+	if (IsTrigger(keys, preKeys, DIK_E)) {
+		exitRequested_ = true;
 	}
 }
 
@@ -91,7 +105,7 @@ void SceneManager::DrawTitle() {
 		// 素材がない間の仮表示
 		Novice::DrawBox(0, 0, kScreenWidth, kScreenHeight, 0.0f, 0x202020FF, kFillModeSolid);
 		Novice::ScreenPrintf(540, 300, "NOBORENAIGHTS (title)");
-		Novice::ScreenPrintf(540, 340, "PUSH SPACE TO START");
+		Novice::ScreenPrintf(540, 340, "P: START   E: EXIT");
 	}
 }
 
@@ -102,9 +116,10 @@ void SceneManager::UpdatePlay(const char* keys, const char* preKeys) {
 	switch (playState_) {
 	case PlayState::kPlaying:
 		// ゲームの更新は「プレイ中」のときだけ動かす
-		player_.Update(keys); // プレイヤーの移動
+		player_.Update(keys, preKeys); // プレイヤーの移動(連打・しがみつき・ずり落ち)
 		UpdateScroll();       // スクロール
 		UpdateWind();         // 突風(スクロール後のプレイヤー位置で判定する)
+		UpdateRock();         // 落石(当たったらプレイヤーが硬直する)
 
 		// ゴール判定(スクロールが終わったあと、一定の高さまで登ったらクリア)
 		if (scrollY_ >= stageScrollLength_ && player_.GetY() <= kGoalY) {
@@ -154,11 +169,17 @@ void SceneManager::DrawPlay() {
 	// ---- プレイ画面(状態に関係なく常に描く。止まった背景として見える) ----
 	DrawBackground();
 
+	// 落石(警告 → 岩。プレイヤーより奥に描く)
+	DrawRock();
+
 	// プレイヤー
 	player_.Draw();
 
 	// 突風(プレイヤーより手前に描く)
 	DrawWind();
+
+	// 連打ゲージ
+	player_.DrawGauge();
 
 	// ここにロープ・ギミックの描画を書いていく
 
@@ -236,10 +257,8 @@ void SceneManager::UpdateWind() {
 	float playerTop = player_.GetY() - scrollY_;
 	float playerBottom = playerTop + player_.GetSize();
 
-	// 【仮】速さ = 1フレームで登った距離(上に登ると正)。
-	// プレイヤーの本実装で GetSpeed() ができたら、その値に置き換える
-	float speed = prevPlayerWorldY_ - playerTop;
-	prevPlayerWorldY_ = playerTop;
+	// 速さ(上に登ると正、ずり落ちは負、しがみつき中は0)
+	float speed = player_.GetSpeed();
 
 	for (WindZone& wind : winds_) {
 		wind.Update();
@@ -274,6 +293,32 @@ void SceneManager::DrawWind() {
 }
 
 // -----------------------------------------------------
+// 落石
+// -----------------------------------------------------
+void SceneManager::UpdateRock() {
+	for (RockFall& rock : rocks_) {
+		rock.Update(scrollY_);
+
+		// すでに硬直中なら、重ねて当たったことにはしない(岩もそのまま通り過ぎる)
+		if (!player_.IsStunned() &&
+		    rock.CheckHit(player_.GetCenterX(), player_.GetCenterY(), player_.GetRadius(), scrollY_)) {
+			player_.Stun(); // プレイヤーが硬直して落ちる
+			rock.Consume(); // 当たった岩は消える
+		}
+	}
+}
+
+void SceneManager::DrawRock() {
+	for (const RockFall& rock : rocks_) {
+		rock.DrawWarning();
+		rock.Draw(scrollY_, rockHandle_);
+		if (kDebugRock) {
+			rock.DrawDebug(scrollY_);
+		}
+	}
+}
+
+// -----------------------------------------------------
 // シーン切り替え・補助関数
 // -----------------------------------------------------
 void SceneManager::ChangeScene(SceneType next) {
@@ -294,7 +339,6 @@ void SceneManager::ResetPlay() {
 	player_.Reset();
 
 	// 突風を初期状態に戻す
-	prevPlayerWorldY_ = player_.GetY() - scrollY_;
 	windDebugDir_ = 0;
 	windDebugTimer_ = 0;
 	winds_.clear();
@@ -315,6 +359,16 @@ void SceneManager::ResetPlay() {
 		q.startOffsetFrames = 60;
 		winds_.emplace_back();
 		winds_.back().Setup(q);
+	}
+
+	// 落石を初期状態に戻す
+	rocks_.clear();
+	if (kDebugRock) {
+		// 【仮】テスト用の岩を1つ置く(ステージ4のデータができたらそちらへ移す)
+		RockFall::Params r;
+		r.x = 640.0f; // 画面中央のロープの位置
+		rocks_.emplace_back();
+		rocks_.back().Setup(r);
 	}
 
 	// ステージごとの高さを変えたくなったらここで currentStage_ に応じて設定する
